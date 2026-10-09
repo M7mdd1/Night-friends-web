@@ -93,7 +93,7 @@ if (!process.env.DATABASE_URL) {
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false } // لضمان استقرار الاتصال السحابي المجاني بدون توقف
+  ssl: { rejectUnauthorized: false }
 });
 
 const app = express();
@@ -181,7 +181,7 @@ function publicState(source, includeAnswer) {
 }
 
 async function findRoom(code) {
-  const result = await pool.query("SELECT state FROM game_rooms WHERE code = $1", [code]);
+  const result = await pool.query('SELECT state FROM "db-game" WHERE code = $1', [code]);
   return result.rows[0]?.state || null;
 }
 
@@ -203,7 +203,7 @@ async function withLockedRoom(code, update) {
   try {
     await client.query("BEGIN");
     const selected = await client.query(
-      "SELECT state FROM game_rooms WHERE code = $1 FOR UPDATE",
+      'SELECT state FROM "db-game" WHERE code = $1 FOR UPDATE',
       [code],
     );
     if (!selected.rows.length) {
@@ -213,7 +213,7 @@ async function withLockedRoom(code, update) {
     const state = selected.rows[0].state;
     const value = await update(state);
     await client.query(
-      "UPDATE game_rooms SET state = $1::jsonb, updated_at = NOW() WHERE code = $2",
+      'UPDATE "db-game" SET state = $1::jsonb, updated_at = NOW() WHERE code = $2',
       [JSON.stringify(state), code],
     );
     await client.query("COMMIT");
@@ -243,80 +243,6 @@ function attachSocket(socket, code, playerId, isHost) {
 
 function respond(ack, value) {
   if (typeof ack === "function") ack(value);
-}
-
-async function roomAction(socket, action) {
-  const code = socket.data.code;
-  const now = Date.now();
-  return withLockedRoom(code, (state) => {
-    if (action === "timer") {
-      if (state.timerRunning) {
-        state.timeRemaining = getRemainingSeconds(state, now);
-        state.timerRunning = false;
-        state.timerEndsAt = null;
-      } else {
-        if (getRemainingSeconds(state, now) <= 0) state.timeRemaining = state.timeLimit;
-        state.timerEndsAt = now + state.timeRemaining * 1000;
-        state.timerRunning = true;
-      }
-      return;
-    }
-
-    if (action === "next" || action === "correct" || action === "wrong" || action === "endRound") {
-      if (action === "correct" && state.teams.length) {
-        const activeTeam = state.questionIndex % state.teams.length;
-        state.teams[activeTeam].score += 10;
-      }
-      if (action === "endRound") state.round += 1;
-      state.timerRunning = false;
-      state.timerEndsAt = null;
-      state.timeRemaining = state.timeLimit;
-      state.questionIndex += 1;
-      drawQuestion(state, state.category);
-      return;
-    }
-
-    if (action === "spin") {
-      const category = CATEGORIES[crypto.randomInt(CATEGORIES.length)];
-      state.category = category;
-      state.questionIndex += 1;
-      state.timerRunning = false;
-      state.timerEndsAt = null;
-      state.timeRemaining = state.timeLimit;
-      state.spinId = (state.spinId || 0) + 1;
-      state.spinTarget = category;
-      drawQuestion(state, category);
-      return;
-    }
-
-    if (action === "reset") {
-      state.teams.forEach((team) => { team.score = 0; });
-      state.round = 1;
-      state.questionIndex = 0;
-      state.category = CATEGORIES[0];
-      state.spinTarget = null;
-      state.usedQuestionIds = {};
-      state.timerRunning = false;
-      state.timerEndsAt = null;
-      state.timeRemaining = state.timeLimit;
-      drawQuestion(state, state.category);
-      return;
-    }
-
-    if (action === "addTeam") {
-      if (state.teams.length >= 8) throw new Error("وصلتم إلى الحد الأقصى وهو 8 فرق.");
-      const index = state.teams.length;
-      state.teams.push({
-        name: `الفريق ${index + 1}`,
-        score: 0,
-        color: COLORS[index % COLORS.length],
-        face: FACES[index % FACES.length],
-      });
-      return;
-    }
-
-    throw new Error("هذا الإجراء غير متاح.");
-  });
 }
 
 io.on("connection", (socket) => {
@@ -364,7 +290,7 @@ io.on("connection", (socket) => {
         state.code = code;
         try {
           await pool.query(
-            "INSERT INTO game_rooms (code, host_token_hash, state) VALUES ($1, $2, $3::jsonb)",
+            'INSERT INTO "db-game" (code, host_token_hash, state) VALUES ($1, $2, $3::jsonb)',
             [code, tokenHash(hostToken), JSON.stringify(state)],
           );
           created = true;
@@ -414,7 +340,7 @@ io.on("connection", (socket) => {
         return respond(ack, { ok: false, error: "تعذّر الاستعادة." });
       }
       const result = await pool.query(
-        "SELECT host_token_hash, state FROM game_rooms WHERE code = $1",
+        'SELECT host_token_hash, state FROM "db-game" WHERE code = $1',
         [code],
       );
       if (!result.rows.length) return respond(ack, { ok: false, error: "الغرفة غير موجودة." });
@@ -439,9 +365,81 @@ io.on("connection", (socket) => {
       return respond(ack, { ok: false, error: "متاح للمضيف فقط." });
     }
     try {
-      const result = await roomAction(socket, String(payload.action || ""));
-      if (!result) return respond(ack, { ok: false, error: "الغرفة غير موجودة." });
-      respond(ack, { ok: true, state: publicState(result.state, true) });
+      const code = socket.data.code;
+      const now = Date.now();
+      const action = String(payload.action || "");
+      const res = await withLockedRoom(code, (state) => {
+        if (action === "timer") {
+          if (state.timerRunning) {
+            state.timeRemaining = getRemainingSeconds(state, now);
+            state.timerRunning = false;
+            state.timerEndsAt = null;
+          } else {
+            if (getRemainingSeconds(state, now) <= 0) state.timeRemaining = state.timeLimit;
+            state.timerEndsAt = now + state.timeRemaining * 1000;
+            state.timerRunning = true;
+          }
+          return;
+        }
+
+        if (action === "next" || action === "correct" || action === "wrong" || action === "endRound") {
+          if (action === "correct" && state.teams.length) {
+            const activeTeam = state.questionIndex % state.teams.length;
+            state.teams[activeTeam].score += 10;
+          }
+          if (action === "endRound") state.round += 1;
+          state.timerRunning = false;
+          state.timerEndsAt = null;
+          state.timeRemaining = state.timeLimit;
+          state.questionIndex += 1;
+          drawQuestion(state, state.category);
+          return;
+        }
+
+        if (action === "spin") {
+          const category = CATEGORIES[crypto.randomInt(CATEGORIES.length)];
+          state.category = category;
+          state.questionIndex += 1;
+          state.timerRunning = false;
+          state.timerEndsAt = null;
+          state.timeRemaining = state.timeLimit;
+          state.spinId = (state.spinId || 0) + 1;
+          state.spinTarget = category;
+          drawQuestion(state, category);
+          return;
+        }
+
+        if (action === "reset") {
+          state.teams.forEach((team) => { team.score = 0; });
+          state.round = 1;
+          state.questionIndex = 0;
+          state.category = CATEGORIES[0];
+          state.spinTarget = null;
+          state.usedQuestionIds = {};
+          state.timerRunning = false;
+          state.timerEndsAt = null;
+          state.timeRemaining = state.timeLimit;
+          drawQuestion(state, state.category);
+          return;
+        }
+
+        if (action === "addTeam") {
+          if (state.teams.length >= 8) throw new Error("وصلتم إلى الحد الأقصى وهو 8 فرق.");
+          const index = state.teams.length;
+          state.teams.push({
+            name: `الفريق ${index + 1}`,
+            score: 0,
+            color: COLORS[index % COLORS.length],
+            face: FACES[index % FACES.length],
+          });
+          return;
+        }
+
+        throw new Error("هذا الإجراء غير متاح.");
+      });
+
+      if (!res) return respond(ack, { ok: false, error: "الغرفة غير موجودة." });
+      respond(ack, { ok: true, state: publicState(res.state, true) });
     } catch (error) {
       respond(ack, { ok: false, error: error.message || "تعذّر التنفيذ." });
     }
@@ -460,6 +458,17 @@ io.on("connection", (socket) => {
 
 async function start() {
   const listener = await pool.connect();
+
+  await listener.query(`
+    CREATE TABLE IF NOT EXISTS "db-game" (
+      code VARCHAR(12) PRIMARY KEY,
+      host_token_hash TEXT NOT NULL,
+      state JSONB NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    );
+  `);
+
   await listener.query("LISTEN shutabeem_room_updates");
   listener.on("notification", ({ payload }) => {
     if (!payload || !ROOM_CODE_PATTERN.test(payload)) return;
