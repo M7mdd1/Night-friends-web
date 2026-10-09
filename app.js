@@ -2,10 +2,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const $ = (selector) => document.querySelector(selector);   const $$ = (selector) => document.querySelectorAll(selector);
 
   let socket = null;
-  try { if (typeof io !== "undefined") socket = io(); } catch (e) {}
+  try {
+    if (typeof io !== "undefined") socket = io();
+  } catch (e) {}
 
   let currentState = null;
-  let currentRole = "host";
+  let currentRole = "host"; // افتراضياً مضيف أو حسب الجلسة
 
   function toast(msg) {
     const n = $("#toast");
@@ -34,7 +36,7 @@ document.addEventListener("DOMContentLoaded", () => {
     currentState = state;
     showView("gameView");
 
-    // إخفاء كود الغرفة تماماً عن اللاعبين ومنع نسخه
+    // [الإضافة المطلوبة]: إخفاء كود الغرفة تماماً عن اللاعبين ومنع نسخه، وإظهاره للمضيف فقط
     const roomCodeContainer = document.querySelector(".room-code");
     if (roomCodeContainer) {
       roomCodeContainer.style.display = (currentRole === "host") ? "block" : "none";
@@ -44,26 +46,14 @@ document.addEventListener("DOMContentLoaded", () => {
       el.style.display = (currentRole === "host") ? (el.tagName === "BUTTON" ? "inline-block" : "block") : "none";
     });
 
-    // إدارة ظهور الروليت أو شاشة الأسئلة بناءً على حالة العجلة
-    const wheelPanel = document.querySelector(".wheel-panel");
-    const challengeCard = document.querySelector(".challenge-card");
-    if (wheelPanel && challengeCard) {
-      if (state.showWheel) {
-        wheelPanel.style.display = "block";
-        challengeCard.style.display = "none";
-      } else {
-        wheelPanel.style.display = "none";
-        challengeCard.style.display = "block";
-      }
-    }
-
-    // تحديث بيانات السؤال
+    // تحديث بيانات السؤال واللعبة
     const categoryEl = $("#category");
     const promptEl = $("#question");
     const flagEl = $("#flag");
     const answerTextEl = $("#answerText");
     const roundTitleEl = $("#roundTitle");
     const roundCountEl = $("#roundCount");
+    const timerEl = $("#timer");
 
     if (categoryEl) categoryEl.textContent = state.category;
     if (promptEl) promptEl.textContent = state.question?.prompt || "انتظر السؤال...";
@@ -71,23 +61,24 @@ document.addEventListener("DOMContentLoaded", () => {
     if (answerTextEl) answerTextEl.textContent = state.question?.answer || "الإجابة مخفية";
     if (roundTitleEl) roundTitleEl.textContent = `الجولة ${state.round}`;
     if (roundCountEl) roundCountEl.textContent = `الجولة ${state.round}`;
+    if (timerEl) timerEl.textContent = state.timeRemaining;
 
-    // لوحة الفرق وتوقيتاتهم (نظام الوقت بدل النقاط)
+    // لوحة النقاط والفرق
     const scoreboard = $("#scoreboard");
-    if (scoreboard) {
+    if (scoreboard && state.teams) {
       scoreboard.innerHTML = state.teams.map((team, idx) => `
-        <div class="score-item ${idx === state.activeTeamIndex ? 'active' : ''}" style="border-right: 4px solid ${team.color}; padding: 8px; margin-bottom: 6px; background: rgba(255,255,255,0.03); border-radius: 6px; display: flex; align-items: center; justify-content: space-between;">
+        <div class="score-item" style="border-right: 4px solid ${team.color}; padding: 8px; margin-bottom: 6px; background: rgba(255,255,255,0.03); border-radius: 6px; display: flex; align-items: center; justify-content: space-between;">
           <div style="display: flex; align-items: center; gap: 8px;">
             <span>${team.face}</span>
-            <div><b>${team.name}</b><br><small style="color: ${idx === state.activeTeamIndex ? '#47e0a1' : '#94a3b8'}">${idx === state.activeTeamIndex ? 'دور الفريق الحالي 🎯' : ''}</small></div>
+            <div><b>${team.name}</b></div>
           </div>
-          <span style="color: #ff5252; font-weight: bold;">⏱️ ${team.timeRemaining}ث</span>
+          <span style="color: #47e0a1; font-weight: bold;">⭐ ${team.score}</span>
         </div>
       `).join("");
     }
   }
 
-  // تفاعل المضيف مع الأزرار
+  // أزرار تحكم المضيف
   $("#correctBtn")?.addEventListener("click", () => {
     socket.emit("host:action", { action: "correct" }, (res) => { if(res.ok) renderState(res.state); });
   });
@@ -101,25 +92,42 @@ document.addEventListener("DOMContentLoaded", () => {
     if (box) box.classList.toggle("hidden");
   });
 
-  // لف العجلة أو اختيار الفئات
+  $("#nextBtn")?.addEventListener("click", () => {
+    socket.emit("host:action", { action: "next" }, (res) => { if(res.ok) renderState(res.state); });
+  });
+
   $("#spinBtn")?.addEventListener("click", () => {
     socket.emit("host:action", { action: "spin" }, (res) => { if(res.ok) renderState(res.state); });
   });
 
-  $("#nextBtn")?.addEventListener("click", () => {
-    socket.emit("host:action", { action: "nextCategory" }, (res) => { if(res.ok) renderState(res.state); });
+  $("#timerBtn")?.addEventListener("click", () => {
+    socket.emit("host:action", { action: "timer" }, (res) => { if(res.ok) renderState(res.state); });
   });
 
-  // إنشاء الغرفة من الإعدادات
+  $("#resetBtn")?.addEventListener("click", () => {
+    socket.emit("host:action", { action: "reset" }, (res) => { if(res.ok) renderState(res.state); });
+  });
+
+  $("#endRoundBtn")?.addEventListener("click", () => {
+    socket.emit("host:action", { action: "endRound" }, (res) => { if(res.ok) renderState(res.state); });
+  });
+
+  $("#addTeamBtn")?.addEventListener("click", () => {
+    socket.emit("host:action", { action: "addTeam" }, (res) => { if(res.ok) renderState(res.state); });
+  });
+
+  // إنشاء الغرفة
   $("#saveSetup")?.addEventListener("click", () => {
     currentRole = "host";
     const playerName = $("#playerName")?.value || "المضيف";
-    const roomName = $("#roomName")?.value || "جمعة الأصدقاء";
+    const roomName = $("#roomName")?.value || "تحدي الأصدقاء";
     const timeLimit = Number($("#roundTime")?.value) || 45;
     const teamCount = Number($("#teamCount")?.value) || 3;
 
     const teams = [];
-    for(let i=1; i<=teamCount; i++) teams.push(`الفريق ${i}`);
+    for(let i = 1; i <= teamCount; i++) {
+      teams.push(`الفريق ${i}`);
+    }
 
     socket.emit("room:create", { playerName, roomName, timeLimit, teams }, (res) => {
       if (res.ok) {
@@ -131,7 +139,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // انضمام اللاعبين
+  // انضمام اللاعب
   $("#joinConfirm")?.addEventListener("click", () => {
     currentRole = "player";
     const code = $("#joinCode")?.value;
@@ -145,6 +153,15 @@ document.addEventListener("DOMContentLoaded", () => {
         toast(res.error || "رمز الغرفة غير صحيح");
       }
     });
+  });
+
+  // نسخ كود الغرفة (للمضيف فقط)
+  $("#copyCode")?.addEventListener("click", () => {
+    const code = $("#roomCode")?.textContent;
+    if (code) {
+      navigator.clipboard.writeText(code);
+      toast("تم نسخ رمز الغرفة!");
+    }
   });
 
   if (socket) {
