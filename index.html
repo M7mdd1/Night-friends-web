@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#080a18"><title>شوطابيم | لعبة جماعية</title>
+<link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/responsive.css">
+</head>
+<body>
+<div class="ambient a"></div><div class="ambient b"></div>
+<header class="topbar"><div class="brand"><span class="brand-mark">ش</span><div><b>شوطابيم</b><small>اللعب يجمعنا</small></div></div><div class="top-actions"><span class="pill live"><i></i> غرفة لعب</span><button class="icon-btn" id="soundBtn" title="الصوت">🔊</button><button class="icon-btn" id="themeBtn" title="تغيير المظهر">☼</button></div></header>
+<main>
+<section class="hero" id="homeView">
+<div class="eyebrow">ليلة تحدّي الأصدقاء</div><h1>مين فيكم <span>قدّ التحدّي؟</span></h1><p>اختاروا الفرق، لفّوا العجلة، واجمعوا أكبر عدد من النقاط.</p>
+<div class="hero-actions"><button class="primary" id="startBtn">ابدأ اللعب <span>←</span></button><button class="secondary" id="joinBtn">انضم لغرفة</button></div>
+<div class="feature-row"><span>🎡 عجلة الحظ</span><span>🌍 أعلام وتحديات</span><span>⏱️ وقت محدود</span></div>
+</section>
+<section class="setup panel hidden" id="setupView">
+<div class="section-head"><div><small>قبل البداية</small><h2>جهّزوا جلستكم</h2></div><span class="step">01 / 03</span></div>
+<div class="setup-grid">
+<div class="field"><label for="playerName">اسمك</label><input id="playerName" value="المضيف" maxlength="26" autocomplete="name"></div>
+<div class="field"><label for="roomName">اسم الغرفة</label><input id="roomName" value="جمعة الأصدقاء" maxlength="32"></div>
+<div class="field"><label for="teamCount">عدد الفرق</label><select id="teamCount"><option value="2">فريقين</option><option value="3">3 فرق</option><option value="4">4 فرق</option><option value="5" selected>5 فرق</option></select></div>
+<div class="field"><label for="roundTime">وقت الجولة</label><select id="roundTime"><option value="30">30 ثانية</option><option value="45" selected>45 ثانية</option><option value="60">60 ثانية</option></select></div>
+</div>
+<div class="team-editor" id="teamEditor"></div>
+<div class="setup-bottom"><span class="muted">تقدر تغيّر أسماء الفرق قبل اللعب.</span><button class="primary" id="saveSetup">حفظ وبدء الجولة ←</button></div>
+</section>
+<section class="game panel hidden" id="gameView">
+<div class="game-head"><div><small id="roomLabel">غرفة اللعب</small><h2 id="roundTitle">الجولة الأولى</h2><small id="connectionStatus" class="connection-status">جارٍ الاتصال...</small></div><div class="round-tools"><span class="pill" id="roundCount">الجولة 1</span><button class="secondary small host-only" data-host-only id="resetBtn">إعادة ضبط</button></div></div>
+<div class="game-layout">
+<div class="play-area">
+<div class="timer-card"><div><small>الوقت المتبقي</small><strong id="timer">45</strong><small>ثانية</small></div><div class="timer-track"><span id="timerBar"></span></div><button data-host-only id="timerBtn" class="secondary small">ابدأ المؤقت</button></div>
+<div class="challenge-card">
+<div class="challenge-top"><span class="pill" id="category">أعلام العالم</span><span class="muted" id="questionNo">التحدي 1</span></div>
+<div class="flag-box"><div id="flag" class="flag">🇮🇹</div></div>
+<h3 id="question">ما اسم هذه الدولة؟</h3>
+<div class="answer-row host-only" data-host-only><input id="answerInput" placeholder="اكتب الإجابة هنا..." autocomplete="off"><button class="primary" id="revealBtn">كشف الإجابة</button></div>
+<div class="answer hidden" id="answerBox">الإجابة: <b id="answerText">إيطاليا</b></div>
+<div class="challenge-actions host-only" data-host-only><button class="secondary" id="wrongBtn">ما عرفوا ✕</button><button class="primary" id="correctBtn">إجابة صحيحة +10</button><button class="secondary" id="nextBtn">التحدي التالي ↻</button></div>
+</div>
+<div class="wheel-panel"><div><small>اختاروا نوع التحدّي</small><h3>عجلة التحديات</h3></div><div class="wheel-wrap"><div class="wheel-pointer">▼</div><div class="wheel" id="wheel"><div class="wheel-label w1">أعلام</div><div class="wheel-label w2">معلومات</div><div class="wheel-label w3">سرعة</div><div class="wheel-label w4">تمثيل</div><div class="wheel-label w5">تحديات</div><div class="wheel-center">لفّ</div></div></div><button data-host-only id="spinBtn" class="secondary">🎡 لفّ العجلة</button><div class="muted" id="wheelResult">لفّ العجلة لاختيار الفئة التالية</div></div>
+</div>
+<aside class="sidebar"><div class="side-head"><h3>لوحة النقاط</h3><span class="pill">LIVE</span></div><div id="scoreboard" class="scoreboard"></div><div class="side-buttons host-only" data-host-only><button class="secondary" id="addTeamBtn">＋ إضافة فريق</button><button class="secondary" id="endRoundBtn">إنهاء الجولة</button></div><div class="players-panel"><div class="side-head"><h3>اللاعبون</h3><span class="muted" id="playerCount">0</span></div><div id="playersList" class="players-list"></div></div><div class="room-code"><small>رمز الغرفة</small><div><b id="roomCode">SH-XXXXXX</b><button id="copyCode" class="icon-btn" title="نسخ رابط الانضمام">⧉</button></div><p>انسخ رابط الغرفة وأرسله للأصدقاء.</p></div><p id="guestHint" class="guest-hint hidden">المضيف يدير الجولة والنقاط والمؤقت.</p></aside>
+</div>
+</section>
+<section class="join-panel panel hidden" id="joinView"><button class="back-link" id="backHome">← رجوع</button><div class="join-icon">⌘</div><h2>انضم إلى غرفة</h2><p>اكتب اسمك ورمز الغرفة الذي أرسله لك المضيف.</p><input id="joinPlayerName" placeholder="اسم اللاعب" maxlength="26" autocomplete="name"><input id="joinCode" placeholder="مثال: SH-1A2B3C" maxlength="12" autocomplete="off"><button class="primary" id="joinConfirm">انضمام</button><div class="join-message" id="joinMessage" role="status" aria-live="polite"></div></section>
+<footer><span>شوطابيم © 2026</span><span>مصمّم لجلسات الأصدقاء ✦</span></footer>
+</main>
+<div class="toast" id="toast"></div>
+<script src="/socket.io/socket.io.js"></script><script src="app.js"></script>
+</body></html>
