@@ -2,7 +2,8 @@ const $ = (selector) => document.querySelector(selector);
 const categories = ["أعلام العالم", "معلومات عامة", "سرعة البديهة", "التمثيل", "التحديات"];
 const defaultTeamNames = ["الفريق الأول", "الفريق الثاني", "الفريق الثالث", "الفريق الرابع", "الفريق الخامس"];
 const faces = ["🧑🏻", "🧑🏽", "🧑🏼", "🧑🏾", "🧑🏼‍🦱", "👩🏻", "👩🏽", "👩🏼"];
-const socket = window.io();
+const socket = window.io(window.location.origin, { transports: ["websocket", "polling"] });
+
 
 let teams = [];
 let currentState = null;
