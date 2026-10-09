@@ -291,6 +291,8 @@ document.addEventListener("DOMContentLoaded", () => {
       saveSetup.disabled = true;
       saveSetup.textContent = "جارٍ إنشاء الغرفة...";
 
+      currentRole = "host";
+
       if (socket && socket.connected) {
         socket.emit("room:create", {
           playerName,
@@ -306,25 +308,36 @@ document.addEventListener("DOMContentLoaded", () => {
             renderState(result.state);
             toast(`تم إنشاء الغرفة ${result.code}`);
           } else {
-            show("gameView");
-            toast("تم البدء بنجاح!");
+            activateHostMode(roomName);
           }
         });
       } else {
-        saveSetup.disabled = false;
-        saveSetup.textContent = "حفظ وبدء الجولة ←";
-        show("gameView");
-        toast("تم البدء محلياً!");
+        activateHostMode(roomName);
       }
 
       setTimeout(() => {
         if (saveSetup.disabled) {
           saveSetup.disabled = false;
           saveSetup.textContent = "حفظ وبدء الجولة ←";
-          show("gameView");
+          activateHostMode(roomName);
         }
       }, 2500);
     });
+  }
+
+  function activateHostMode(roomName) {
+    currentRole = "host";
+    show("gameView");
+    const roomLabel = $("#roomLabel");
+    if (roomLabel) roomLabel.textContent = roomName;
+
+    document.querySelectorAll("[data-host-only]").forEach((element) => {
+      element.classList.remove("hidden");
+    });
+    const guestHint = $("#guestHint");
+    if (guestHint) guestHint.classList.add("hidden");
+
+    toast("أنت الآن مضيف الغرفة!");
   }
 
   const joinBtn = $("#joinBtn");
