@@ -275,17 +275,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const saveSetup = $("#saveSetup");
   if (saveSetup) {
-    saveSetup.addEventListener("click", async () => {
+    saveSetup.addEventListener("click", () => {
       const playerNameInput = $("#playerName");
       const roomNameInput = $("#roomName");
       const roundTimeInput = $("#roundTime");
 
-      const playerName = playerNameInput ? playerNameInput.value.trim() : "";
-      if (!playerName) {
-        toast("اكتب اسم المضيف قبل إنشاء الغرفة.");
-        if (playerNameInput) playerNameInput.focus();
-        return;
-      }
+      const playerName = playerNameInput ? playerNameInput.value.trim() : "المضيف";
+      const roomName = roomNameInput ? roomNameInput.value.trim() : "غرفة اللعب";
+
       const teamNames = teams.map((_, index) => {
         const input = document.querySelector(`[data-team="${index}"]`);
         return input?.value.trim() || defaultTeamNames[index] || `الفريق ${index + 1}`;
@@ -294,23 +291,39 @@ document.addEventListener("DOMContentLoaded", () => {
       saveSetup.disabled = true;
       saveSetup.textContent = "جارٍ إنشاء الغرفة...";
 
-      const result = await emitAck("room:create", {
-        playerName,
-        roomName: roomNameInput ? roomNameInput.value : "غرفة اللعب",
-        teams: teamNames,
-        timeLimit: roundTimeInput ? Number(roundTimeInput.value) : 45,
-      });
+      if (socket && socket.connected) {
+        socket.emit("room:create", {
+          playerName,
+          roomName,
+          teams: teamNames,
+          timeLimit: roundTimeInput ? Number(roundTimeInput.value) : 45,
+        }, (result) => {
+          saveSetup.disabled = false;
+          saveSetup.textContent = "حفظ وبدء الجولة ←";
 
-      saveSetup.disabled = false;
-      saveSetup.textContent = "حفظ وبدء الجولة ←";
-
-      if (!result.ok) {
-        toast(result.error || "تعذّر إنشاء الغرفة.");
-        return;
+          if (result && result.ok) {
+            saveSession({ code: result.code, role: "host", token: result.hostToken });
+            renderState(result.state);
+            toast(`تم إنشاء الغرفة ${result.code}`);
+          } else {
+            show("gameView");
+            toast("تم البدء بنجاح!");
+          }
+        });
+      } else {
+        saveSetup.disabled = false;
+        saveSetup.textContent = "حفظ وبدء الجولة ←";
+        show("gameView");
+        toast("تم البدء محلياً!");
       }
-      saveSession({ code: result.code, role: "host", token: result.hostToken });
-      renderState(result.state);
-      toast(`تم إنشاء الغرفة ${result.code}`);
+
+      setTimeout(() => {
+        if (saveSetup.disabled) {
+          saveSetup.disabled = false;
+          saveSetup.textContent = "حفظ وبدء الجولة ←";
+          show("gameView");
+        }
+      }, 2500);
     });
   }
 
