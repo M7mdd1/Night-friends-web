@@ -3,7 +3,13 @@ document.addEventListener("DOMContentLoaded", () => {
   const categories = ["أعلام العالم", "معلومات عامة", "سرعة البديهة", "التمثيل", "التحديات"];
   const defaultTeamNames = ["الفريق الأول", "الفريق الثاني", "الفريق الثالث", "الفريق الرابع", "الفريق الخامس"];
   const faces = ["🧑🏻", "🧑🏽", "🧑🏼", "🧑🏾", "🧑🏼‍🦱", "👩🏻", "👩🏽", "👩🏼"];
-  const socket = window.io();
+
+  let socket;
+  try {
+    socket = window.io();
+  } catch (e) {
+    console.error("Socket error:", e);
+  }
 
   let teams = [];
   let currentState = null;
@@ -29,12 +35,23 @@ document.addEventListener("DOMContentLoaded", () => {
     })[character]);
   }
 
-  function show(view) {
+  function show(viewId) {
     ["homeView", "setupView", "gameView", "joinView"].forEach((id) => {
-      const el = $(`#${id}`);
-      if (el) el.classList.toggle("hidden", id !== view);
+      const el = document.getElementById(id);
+      if (el) {
+        if (id === viewId) {
+          el.classList.remove("hidden");
+          el.style.display = "block";
+        } else {
+          el.classList.add("hidden");
+          el.style.display = "none";
+        }
+      }
     });
   }
+
+  // ضمان إظهار الصفحة الرئيسية عند التشغيل
+  show("homeView");
 
   function showJoinMessage(message, isError = true) {
     const element = $("#joinMessage");
@@ -182,7 +199,9 @@ document.addEventListener("DOMContentLoaded", () => {
     renderScores(state);
     renderPlayers(state);
     animateWheel(state);
-    setConnection(socket.connected ? (isHost ? "متصل · المضيف" : "متصل · لاعب") : "انقطع الاتصال", socket.connected);
+    if (socket) {
+      setConnection(socket.connected ? (isHost ? "متصل · المضيف" : "متصل · لاعب") : "انقطع الاتصال", socket.connected);
+    }
   }
 
   function getSession() {
@@ -207,7 +226,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function emitAck(eventName, payload) {
     return new Promise((resolve) => {
-      if (!socket.connected) {
+      if (!socket || !socket.connected) {
         resolve({ ok: false, error: "لا يوجد اتصال بالخادم. تحقّق من الإنترنت." });
         return;
       }
@@ -239,6 +258,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return url.toString();
   }
 
+  // ربط الأزرار الأساسية مع التحقق من وجودها
   const startBtn = $("#startBtn");
   if (startBtn) {
     startBtn.addEventListener("click", () => {
@@ -438,39 +458,41 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  socket.on("connect", async () => {
-    setConnection("متصل بالخادم", true);
-    const linkedCode = new URLSearchParams(location.search).get("room")?.toUpperCase();
-    const session = currentSession || getSession();
-    if (session?.code && session?.token && (!linkedCode || linkedCode === session.code)) {
-      currentSession = session;
-      currentRole = session.role;
-      const result = await emitAck("room:resume", { code: session.code, token: session.token });
-      if (result.ok) {
-        renderState(result.state);
-        return;
+  if (socket) {
+    socket.on("connect", async () => {
+      setConnection("متصل بالخادم", true);
+      const linkedCode = new URLSearchParams(location.search).get("room")?.toUpperCase();
+      const session = currentSession || getSession();
+      if (session?.code && session?.token && (!linkedCode || linkedCode === session.code)) {
+        currentSession = session;
+        currentRole = session.role;
+        const result = await emitAck("room:resume", { code: session.code, token: session.token });
+        if (result.ok) {
+          renderState(result.state);
+          return;
+        }
+        clearSession();
+        if (new URLSearchParams(location.search).has("room")) show("joinView");
+        toast(result.error || "انتهت الجلسة.");
       }
-      clearSession();
-      if (new URLSearchParams(location.search).has("room")) show("joinView");
-      toast(result.error || "انتهت الجلسة.");
-    }
 
-    if (linkedCode) {
-      if (currentSession?.code !== linkedCode) {
-        currentSession = null;
-        currentRole = null;
+      if (linkedCode) {
+        if (currentSession?.code !== linkedCode) {
+          currentSession = null;
+          currentRole = null;
+        }
+        const joinCodeField = $("#joinCode");
+        if (joinCodeField) joinCodeField.value = linkedCode.toUpperCase();
+        show("joinView");
       }
-      const joinCodeField = $("#joinCode");
-      if (joinCodeField) joinCodeField.value = linkedCode.toUpperCase();
-      show("joinView");
-    }
-  });
+    });
 
-  socket.on("disconnect", () => setConnection("انقطع الاتصال · جارٍ إعادة المحاولة", false));
-  socket.on("connect_error", () => setConnection("تعذّر الاتصال بالخادم", false));
-  socket.on("room:state", (state) => {
-    if (currentSession && state.code === currentSession.code) renderState(state);
-  });
+    socket.on("disconnect", () => setConnection("انقطع الاتصال · جارٍ إعادة المحاولة", false));
+    socket.on("connect_error", () => setConnection("تعذّر الاتصال بالخادم", false));
+    socket.on("room:state", (state) => {
+      if (currentSession && state.code === currentSession.code) renderState(state);
+    });
+  }
 
   setInterval(() => {
     if (!currentState) return;
