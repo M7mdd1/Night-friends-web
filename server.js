@@ -30,6 +30,14 @@ const QUESTION_BANK = {
     ["🇸🇪", "ما اسم الدولة التي يظهر علمها؟", "السويد"],
     ["🇹🇷", "ما اسم الدولة التي يظهر علمها؟", "تركيا"],
     ["🇿🇦", "ما اسم الدولة التي يظهر علمها؟", "جنوب أفريقيا"],
+    ["🇸🇦", "ما اسم الدولة التي يظهر علمها؟", "المملكة العربية السعودية"],
+    ["🇪🇬", "ما اسم الدولة التي يظهر علمها؟", "مصر"],
+    ["🇫🇷", "ما اسم الدولة التي يظهر علمها؟", "فرنسا"],
+    ["🇩🇪", "ما اسم الدولة التي يظهر علمها؟", "ألمانيا"],
+    ["🇪🇸", "ما اسم الدولة التي يظهر علمها؟", "إسبانيا"],
+    ["🇦🇷", "ما اسم الدولة التي يظهر علمها؟", "الأرجنتين"],
+    ["🇺🇸", "ما اسم الدولة التي يظهر علمها؟", "الولايات المتحدة الأمريكية"],
+    ["🇬🇧", "ما اسم الدولة التي يظهر علمها؟", "المملكة المتحدة"],
   ],
   "معلومات عامة": [
     ["🪐", "ما أكبر كواكب المجموعة الشمسية؟", "المشتري"],
@@ -42,6 +50,8 @@ const QUESTION_BANK = {
     ["📚", "كم عدد أضلاع الشكل السداسي؟", "ستة أضلاع"],
     ["🏜️", "ما أكبر صحراء حارة في العالم؟", "الصحراء الكبرى"],
     ["🐙", "كم ذراعًا للأخطبوط؟", "ثمانية أذرع"],
+    ["⭐", "ما هي أقرب نجمة إلى كوكب الأرض بعد الشمس؟", "قنطورس الأقرب (بروكسيما سنتوري)"],
+    ["🧠", "ما هو الجزء المسؤول عن التوازن في مخ الإنسان؟", "المخيخ"],
   ],
   "سرعة البديهة": [
     ["⚡", "اذكر ثلاثة أشياء لونها أحمر خلال 5 ثوانٍ!", "أي ثلاثة أشياء حمراء"],
@@ -77,11 +87,15 @@ const QUESTION_BANK = {
 };
 
 if (!process.env.DATABASE_URL) {
-  console.error("DATABASE_URL غير موجود. فعّل قاعدة PostgreSQL للمشروع قبل تشغيل شوطابيم.");
+  console.error("DATABASE_URL غير موجود. يرجى ربط قاعدة PostgreSQL.");
   process.exit(1);
 }
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false } // لضمان استقرار الاتصال السحابي المجاني بدون توقف
+});
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -308,7 +322,7 @@ async function roomAction(socket, action) {
 io.on("connection", (socket) => {
   socket.on("room:create", async (payload = {}, ack) => {
     try {
-      if (socket.data.code) return respond(ack, { ok: false, error: "أنت داخل غرفة بالفعل. حدّث الصفحة لبدء جلسة جديدة." });
+      if (socket.data.code) return respond(ack, { ok: false, error: "أنت داخل غرفة بالفعل." });
       const hostName = cleanName(payload.playerName, "");
       if (!hostName) return respond(ack, { ok: false, error: "اكتب اسمك قبل إنشاء الغرفة." });
 
@@ -358,80 +372,78 @@ io.on("connection", (socket) => {
           if (error.code !== "23505") throw error;
         }
       }
-      if (!created) throw new Error("تعذّر إنشاء رمز غرفة فريد. حاول مرة أخرى.");
+      if (!created) throw new Error("تعذّر إنشاء رمز غرفة فريد.");
 
       attachSocket(socket, state.code, hostId, true);
       await notifyRoom(state.code);
       respond(ack, { ok: true, code: state.code, hostToken, state: publicState(state, true) });
     } catch (error) {
-      console.error("room:create failed:", error.message);
-      respond(ack, { ok: false, error: "تعذّر إنشاء الغرفة الآن. تحقّق من اتصال قاعدة البيانات وحاول مجددًا." });
+      respond(ack, { ok: false, error: "تعذّر إنشاء الغرفة الآن." });
     }
   });
 
   socket.on("room:join", async (payload = {}, ack) => {
     try {
-      if (socket.data.code) return respond(ack, { ok: false, error: "أنت داخل غرفة بالفعل. حدّث الصفحة للانضمام إلى غرفة أخرى." });
+      if (socket.data.code) return respond(ack, { ok: false, error: "أنت داخل غرفة بالفعل." });
       const code = normalizeCode(payload.code);
       const name = cleanName(payload.playerName, "");
       if (!name) return respond(ack, { ok: false, error: "اكتب اسمك للانضمام." });
-      if (!ROOM_CODE_PATTERN.test(code)) return respond(ack, { ok: false, error: "صيغة الرمز غير صحيحة. استخدم الرمز SH- متبوعًا بستة أحرف أو أرقام." });
+      if (!ROOM_CODE_PATTERN.test(code)) return respond(ack, { ok: false, error: "صيغة الرمز غير صحيحة." });
 
       const playerId = crypto.randomUUID();
       const playerToken = crypto.randomBytes(32).toString("base64url");
       const change = await withLockedRoom(code, (state) => {
-        if (state.players.length >= MAX_PLAYERS) throw new Error("الغرفة ممتلئة. جرّب غرفة أخرى.");
+        if (state.players.length >= MAX_PLAYERS) throw new Error("الغرفة ممتلئة.");
         state.players.push({ id: playerId, name, role: "player", online: true, tokenHash: tokenHash(playerToken) });
       });
-      if (!change) return respond(ack, { ok: false, error: "لم نعثر على غرفة بهذا الرمز. تأكد من الرمز أو اطلب رابطًا جديدًا." });
+      if (!change) return respond(ack, { ok: false, error: "لم نعثر على غرفة بهذا الرمز." });
 
       attachSocket(socket, code, playerId, false);
       respond(ack, { ok: true, playerToken, state: publicState(change.state, false) });
     } catch (error) {
-      respond(ack, { ok: false, error: error.message || "تعذّر الانضمام إلى الغرفة." });
+      respond(ack, { ok: false, error: error.message || "تعذّر الانضمام." });
     }
   });
 
   socket.on("room:resume", async (payload = {}, ack) => {
     try {
-      if (socket.data.code) return respond(ack, { ok: false, error: "هذه الجلسة متصلة بغرفة بالفعل." });
+      if (socket.data.code) return respond(ack, { ok: false, error: "متصل بغرفة بالفعل." });
       const code = normalizeCode(payload.code);
       const token = String(payload.token || "");
       if (!ROOM_CODE_PATTERN.test(code) || token.length < 30) {
-        return respond(ack, { ok: false, error: "تعذّر استعادة جلسة الغرفة." });
+        return respond(ack, { ok: false, error: "تعذّر الاستعادة." });
       }
       const result = await pool.query(
         "SELECT host_token_hash, state FROM game_rooms WHERE code = $1",
         [code],
       );
-      if (!result.rows.length) return respond(ack, { ok: false, error: "الغرفة لم تعد موجودة." });
+      if (!result.rows.length) return respond(ack, { ok: false, error: "الغرفة غير موجودة." });
       const row = result.rows[0];
       const candidateHash = tokenHash(token);
       const isHost = safeCompareHash(row.host_token_hash, candidateHash);
       const player = isHost
         ? row.state.players.find((entry) => entry.role === "host")
         : row.state.players.find((entry) => entry.role === "player" && safeCompareHash(entry.tokenHash, candidateHash));
-      if (!player) return respond(ack, { ok: false, error: "انتهت صلاحية رابط الدخول. انضم إلى الغرفة من جديد." });
+      if (!player) return respond(ack, { ok: false, error: "انتهت الصلاحية." });
 
       const change = await markPlayerOnline(code, player.id, true);
       attachSocket(socket, code, player.id, isHost);
       respond(ack, { ok: true, state: publicState(change?.state || row.state, isHost) });
     } catch (error) {
-      console.error("room:resume failed:", error.message);
-      respond(ack, { ok: false, error: "تعذّرت استعادة الغرفة. حاول تحديث الصفحة." });
+      respond(ack, { ok: false, error: "تعذّرت استعادة الجلسة." });
     }
   });
 
   socket.on("host:action", async (payload = {}, ack) => {
     if (!socket.data.isHost || !socket.data.code) {
-      return respond(ack, { ok: false, error: "هذا الإجراء متاح للمضيف فقط." });
+      return respond(ack, { ok: false, error: "متاح للمضيف فقط." });
     }
     try {
       const result = await roomAction(socket, String(payload.action || ""));
-      if (!result) return respond(ack, { ok: false, error: "الغرفة لم تعد موجودة." });
+      if (!result) return respond(ack, { ok: false, error: "الغرفة غير موجودة." });
       respond(ack, { ok: true, state: publicState(result.state, true) });
     } catch (error) {
-      respond(ack, { ok: false, error: error.message || "تعذّر تنفيذ الإجراء." });
+      respond(ack, { ok: false, error: error.message || "تعذّر التنفيذ." });
     }
   });
 
@@ -442,9 +454,7 @@ io.on("connection", (socket) => {
       const otherSockets = await io.in(code).fetchSockets();
       if (otherSockets.some((other) => other.data.playerId === playerId)) return;
       await markPlayerOnline(code, playerId, false);
-    } catch (error) {
-      console.error("player disconnect update failed:", error.message);
-    }
+    } catch (error) {}
   });
 });
 
@@ -453,16 +463,15 @@ async function start() {
   await listener.query("LISTEN shutabeem_room_updates");
   listener.on("notification", ({ payload }) => {
     if (!payload || !ROOM_CODE_PATTERN.test(payload)) return;
-    broadcastRoom(payload).catch((error) => console.error("room broadcast failed:", error.message));
+    broadcastRoom(payload).catch(() => {});
   });
-  listener.on("error", (error) => console.error("database notification listener failed:", error.message));
+  listener.on("error", () => {});
   server.listen(PORT, "0.0.0.0", () => {
-    console.log(`شوطابيم يعمل على المنفذ ${PORT}`);
+    console.log(`تحدي الأصدقاء يعمل على المنفذ ${PORT}`);
   });
 }
 
 start().catch((error) => {
-  console.error("تعذّر تشغيل شوطابيم. تأكد من إعداد قاعدة البيانات وتشغيل npm run db:setup.");
-  console.error(error.message);
+  console.error("خطأ في بدء التشغيل:", error.message);
   process.exit(1);
 });
